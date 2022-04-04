@@ -80,7 +80,7 @@ pub mod flashing;
 #[warn(missing_docs)]
 mod memory;
 #[warn(missing_docs)]
-mod probe;
+pub mod probe;
 #[warn(missing_docs)]
 mod session;
 

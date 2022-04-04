@@ -4,7 +4,7 @@ pub(crate) mod fake_probe;
 #[cfg(feature = "ftdi")]
 pub(crate) mod ftdi;
 pub(crate) mod jlink;
-pub(crate) mod stlink;
+pub mod stlink;
 
 use crate::error::Error;
 use crate::Session;
