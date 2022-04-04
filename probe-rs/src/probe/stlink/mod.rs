@@ -39,7 +39,7 @@ const DP_PORT: u16 = 0xFFFF;
 
 #[derive(Debug)]
 pub struct StLink<D: StLinkUsb> {
-    device: D,
+    pub device: D,
     name: String,
     hw_version: u8,
     jtag_version: u8,
