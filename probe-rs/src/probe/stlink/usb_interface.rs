@@ -62,9 +62,9 @@ impl StLinkInfo {
     }
 }
 
-pub(crate) struct StLinkUsbDevice {
+pub struct StLinkUsbDevice {
     device_handle: DeviceHandle<rusb::Context>,
-    pub(crate) info: StLinkInfo,
+    pub info: StLinkInfo,
 }
 
 impl std::fmt::Debug for StLinkUsbDevice {

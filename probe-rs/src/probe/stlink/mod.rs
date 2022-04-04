@@ -1,6 +1,6 @@
 pub mod constants;
 pub mod tools;
-mod usb_interface;
+pub mod usb_interface;
 
 use self::usb_interface::{StLinkUsb, StLinkUsbDevice};
 use super::{DebugProbe, DebugProbeError, ProbeCreationError, WireProtocol};
@@ -1107,7 +1107,7 @@ impl<D: StLinkUsb> SwoAccess for StLink<D> {
 }
 
 #[derive(thiserror::Error, Debug)]
-pub(crate) enum StlinkError {
+pub enum StlinkError {
     #[error("Invalid voltage values returned by probe.")]
     VoltageDivisionByZero,
     #[error("Probe is an unknown mode.")]
