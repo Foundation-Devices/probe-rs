@@ -63,7 +63,7 @@ impl StLinkInfo {
 }
 
 pub struct StLinkUsbDevice {
-    device_handle: DeviceHandle<rusb::Context>,
+    pub device_handle: DeviceHandle<rusb::Context>,
     pub info: StLinkInfo,
 }
 
