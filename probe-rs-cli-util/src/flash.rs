@@ -146,7 +146,7 @@ pub fn run_flash_download(
 
         download_option.progress = Some(&progress);
 
-        loader.commit(session, download_option).map_err(|error| {
+        loader.commit(session, download_option, || false).map_err(|error| {
             OperationError::FlashingFailed {
                 source: error,
                 target: session.target().clone(),
@@ -158,7 +158,7 @@ pub fn run_flash_download(
         // We don't care if we cannot join this thread.
         let _ = progress_thread_handle.join();
     } else {
-        loader.commit(session, download_option).map_err(|error| {
+        loader.commit(session, download_option, || false).map_err(|error| {
             OperationError::FlashingFailed {
                 source: error,
                 target: session.target().clone(),

@@ -171,7 +171,7 @@ pub fn test_flashing(
 
     let start_time = Instant::now();
 
-    download_file_with_options(session, test_binary, Format::Elf, options)?;
+    download_file_with_options(session, test_binary, Format::Elf, options, || false)?;
 
     println!();
 

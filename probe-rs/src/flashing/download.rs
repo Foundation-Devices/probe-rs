@@ -134,7 +134,7 @@ pub fn download_file<P: AsRef<Path>>(
     path: P,
     format: Format,
 ) -> Result<(), FileDownloadError> {
-    download_file_with_options(session, path, format, DownloadOptions::default())
+    download_file_with_options(session, path, format, DownloadOptions::default(), || false)
 }
 
 /// Downloads a file of given `format` at `path` to the flash of the target given in `session`.
@@ -147,6 +147,7 @@ pub fn download_file_with_options<P: AsRef<Path>>(
     path: P,
     format: Format,
     options: DownloadOptions<'_>,
+    stop_fn: impl FnMut() -> bool,
 ) -> Result<(), FileDownloadError> {
     let mut file = match File::open(path.as_ref()) {
         Ok(file) => file,
@@ -162,7 +163,7 @@ pub fn download_file_with_options<P: AsRef<Path>>(
     }?;
 
     loader
-        .commit(session, options)
+        .commit(session, options, stop_fn)
         .map_err(FileDownloadError::Flash)
 }
 

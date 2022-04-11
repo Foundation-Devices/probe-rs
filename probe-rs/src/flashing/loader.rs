@@ -198,6 +198,7 @@ impl FlashLoader {
         &self,
         session: &mut Session,
         options: DownloadOptions<'_>,
+        mut stop_fn: impl FnMut() -> bool,
     ) -> Result<(), FlashError> {
         log::debug!("committing FlashLoader!");
 
@@ -329,6 +330,11 @@ impl FlashLoader {
             }
 
             for region in regions {
+                if stop_fn() {
+                    log::debug!("Stopped due to `stop_fn` returned `true`");
+                    return Ok(());
+                }
+
                 log::debug!(
                     "    programming region: {:08x}-{:08x} ({} bytes)",
                     region.range.start,
@@ -352,6 +358,11 @@ impl FlashLoader {
 
         // Commit RAM last, because NVM flashing overwrites RAM
         for region in &self.memory_map {
+            if stop_fn() {
+                log::debug!("Stopped due to `stop_fn` returned `true`");
+                return Ok(());
+            }
+
             if let MemoryRegion::Ram(region) = region {
                 log::debug!(
                     "    region: {:08x}-{:08x} ({} bytes)",
@@ -374,6 +385,11 @@ impl FlashLoader {
 
                 let mut some = false;
                 for (address, data) in self.builder.data_in_range(&region.range) {
+                    if stop_fn() {
+                        log::debug!("Stopped due to `stop_fn` returned `true`");
+                        return Ok(());
+                    }
+
                     some = true;
                     log::debug!(
                         "     -- writing: {:08x}-{:08x} ({} bytes)",
@@ -394,6 +410,11 @@ impl FlashLoader {
         if options.verify {
             log::debug!("Verifying!");
             for (&address, data) in &self.builder.data {
+                if stop_fn() {
+                    log::debug!("Stopped due to `stop_fn` returned `true`");
+                    return Ok(());
+                }
+
                 log::debug!(
                     "    data: {:08x}-{:08x} ({} bytes)",
                     address,

@@ -1407,6 +1407,7 @@ impl Debugger {
                             &path_to_elf,
                             Format::Elf,
                             download_options,
+                            || false,
                         )
                     };
                     debug_adapter = match Rc::try_unwrap(rc_debug_adapter) {
