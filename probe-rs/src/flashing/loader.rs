@@ -244,6 +244,11 @@ impl FlashLoader {
         // erase previous regions' flashed contents.
         log::debug!("Regions:");
         for region in &self.memory_map {
+            if stop_fn() {
+                log::debug!("Stopped due to `stop_fn` returned `true`");
+                return Ok(())
+            }
+
             if let MemoryRegion::Nvm(region) = region {
                 log::debug!(
                     "    region: {:08x}-{:08x} ({} bytes)",
@@ -291,6 +296,11 @@ impl FlashLoader {
 
         // Iterate all flash algorithms we need to use.
         for ((algo_name, core_name), regions) in algos {
+            if stop_fn() {
+                log::debug!("Stopped due to `stop_fn` returned `true`");
+                return Ok(())
+            }
+
             log::debug!("Flashing ranges for algo: {}", algo_name);
 
             // This can't fail, algo_name comes from the target.
