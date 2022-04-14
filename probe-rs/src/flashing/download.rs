@@ -92,9 +92,7 @@ pub enum FileDownloadError {
 /// ```
 #[derive(Default)]
 #[non_exhaustive]
-pub struct DownloadOptions<'progress> {
-    /// An optional progress reporter which is used if this argument is set to `Some(...)`.
-    pub progress: Option<&'progress FlashProgress>,
+pub struct DownloadOptions {
     /// If `keep_unwritten_bytes` is `true`, erased portions of the flash that are not overwritten by the ELF data
     /// are restored afterwards, such that the old contents are untouched.
     ///
@@ -117,7 +115,7 @@ pub struct DownloadOptions<'progress> {
     pub disable_double_buffering: bool,
 }
 
-impl<'progress> DownloadOptions<'progress> {
+impl DownloadOptions {
     /// DownloadOptions with default values.
     pub fn new() -> Self {
         Self::default()
@@ -134,7 +132,7 @@ pub fn download_file<P: AsRef<Path>>(
     path: P,
     format: Format,
 ) -> Result<(), FileDownloadError> {
-    download_file_with_options(session, path, format, DownloadOptions::default(), || false)
+    download_file_with_options(session, path, format, DownloadOptions::default(), &mut |_| false)
 }
 
 /// Downloads a file of given `format` at `path` to the flash of the target given in `session`.
@@ -146,8 +144,8 @@ pub fn download_file_with_options<P: AsRef<Path>>(
     session: &mut Session,
     path: P,
     format: Format,
-    options: DownloadOptions<'_>,
-    stop_fn: impl FnMut() -> bool,
+    options: DownloadOptions,
+    feedback_fn: &mut impl FnMut(Option<ProgressEvent>) -> bool,
 ) -> Result<(), FileDownloadError> {
     let mut file = match File::open(path.as_ref()) {
         Ok(file) => file,
@@ -163,7 +161,7 @@ pub fn download_file_with_options<P: AsRef<Path>>(
     }?;
 
     loader
-        .commit(session, options, stop_fn)
+        .commit(session, options, feedback_fn)
         .map_err(FileDownloadError::Flash)
 }
 

@@ -5,10 +5,11 @@ use probe_rs_target::{
 use std::collections::HashMap;
 use std::io::{Read, Seek, SeekFrom};
 use std::ops::Range;
+use crate::flashing::ProgressEvent;
 
 use super::builder::FlashBuilder;
 use super::{
-    extract_from_elf, BinOptions, DownloadOptions, FileDownloadError, FlashError, FlashProgress,
+    extract_from_elf, BinOptions, DownloadOptions, FileDownloadError, FlashError,
     Flasher,
 };
 use crate::memory::MemoryInterface;
@@ -197,8 +198,8 @@ impl FlashLoader {
     pub fn commit(
         &self,
         session: &mut Session,
-        options: DownloadOptions<'_>,
-        mut stop_fn: impl FnMut() -> bool,
+        options: DownloadOptions,
+        feedback_fn: &mut impl FnMut(Option<ProgressEvent>) -> bool,
     ) -> Result<(), FlashError> {
         log::debug!("committing FlashLoader!");
 
@@ -244,7 +245,7 @@ impl FlashLoader {
         // erase previous regions' flashed contents.
         log::debug!("Regions:");
         for region in &self.memory_map {
-            if stop_fn() {
+            if feedback_fn(None) {
                 log::debug!("Stopped due to `stop_fn` returned `true`");
                 return Ok(())
             }
@@ -285,19 +286,17 @@ impl FlashLoader {
         if options.dry_run {
             log::info!("Skipping programming, dry run!");
 
-            if let Some(progress) = options.progress {
-                progress.failed_filling();
-                progress.failed_erasing();
-                progress.failed_programming();
-            }
+            feedback_fn(Some(ProgressEvent::FailedFilling));
+            feedback_fn(Some(ProgressEvent::FailedErasing));
+            feedback_fn(Some(ProgressEvent::FailedProgramming));
 
             return Ok(());
         }
 
         // Iterate all flash algorithms we need to use.
         for ((algo_name, core_name), regions) in algos {
-            if stop_fn() {
-                log::debug!("Stopped due to `stop_fn` returned `true`");
+            if feedback_fn(None) {
+                log::debug!("Stopped due to `feedback_fn` returned `true`");
                 return Ok(())
             }
 
@@ -328,8 +327,9 @@ impl FlashLoader {
                 log::debug!("    Doing chip erase...");
                 flasher.run_erase(|active| active.erase_all())?;
 
-                if let Some(progress) = options.progress {
-                    progress.finished_erasing();
+                if feedback_fn(Some(ProgressEvent::FinishedErasing)) {
+                    log::debug!("Stopped due to `feedback_fn` returned `true`");
+                    return Ok(())
                 }
             }
 
@@ -340,8 +340,8 @@ impl FlashLoader {
             }
 
             for region in regions {
-                if stop_fn() {
-                    log::debug!("Stopped due to `stop_fn` returned `true`");
+                if feedback_fn(None) {
+                    log::debug!("Stopped due to `feedback_fn` returned `true`");
                     return Ok(());
                 }
 
@@ -359,7 +359,7 @@ impl FlashLoader {
                     options.keep_unwritten_bytes,
                     do_use_double_buffering,
                     options.skip_erase || do_chip_erase,
-                    options.progress.unwrap_or(&FlashProgress::new(|_| {})),
+                    feedback_fn,
                 )?;
             }
         }
@@ -368,8 +368,8 @@ impl FlashLoader {
 
         // Commit RAM last, because NVM flashing overwrites RAM
         for region in &self.memory_map {
-            if stop_fn() {
-                log::debug!("Stopped due to `stop_fn` returned `true`");
+            if feedback_fn(None) {
+                log::debug!("Stopped due to `feedback_fn` returned `true`");
                 return Ok(());
             }
 
@@ -395,8 +395,8 @@ impl FlashLoader {
 
                 let mut some = false;
                 for (address, data) in self.builder.data_in_range(&region.range) {
-                    if stop_fn() {
-                        log::debug!("Stopped due to `stop_fn` returned `true`");
+                    if feedback_fn(None) {
+                        log::debug!("Stopped due to `feedback_fn` returned `true`");
                         return Ok(());
                     }
 
@@ -420,8 +420,8 @@ impl FlashLoader {
         if options.verify {
             log::debug!("Verifying!");
             for (&address, data) in &self.builder.data {
-                if stop_fn() {
-                    log::debug!("Stopped due to `stop_fn` returned `true`");
+                if feedback_fn(None) {
+                    log::debug!("Stopped due to `feedback_fn` returned `true`");
                     return Ok(());
                 }
 

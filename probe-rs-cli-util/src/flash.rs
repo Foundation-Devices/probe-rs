@@ -62,80 +62,6 @@ pub fn run_flash_download(
         program_progress.set_message(" Programming pages  ");
 
         // Register callback to update the progress.
-        let flash_layout_output_path = opt.flash_layout_output_path.clone();
-        let progress = FlashProgress::new(move |event| {
-            use ProgressEvent::*;
-            match event {
-                Initialized { flash_layout } => {
-                    let total_page_size: u32 = flash_layout.pages().iter().map(|s| s.size()).sum();
-
-                    let total_sector_size: u32 =
-                        flash_layout.sectors().iter().map(|s| s.size()).sum();
-
-                    let total_fill_size: u32 = flash_layout.fills().iter().map(|s| s.size()).sum();
-
-                    if let Some(fp) = fill_progress.as_ref() {
-                        fp.set_length(total_fill_size as u64)
-                    }
-                    erase_progress.set_length(total_sector_size as u64);
-                    program_progress.set_length(total_page_size as u64);
-                    let visualizer = flash_layout.visualize();
-                    flash_layout_output_path
-                        .as_ref()
-                        .map(|path| visualizer.write_svg(path));
-                }
-                StartedProgramming => {
-                    program_progress.enable_steady_tick(100);
-                    program_progress.reset_elapsed();
-                }
-                StartedErasing => {
-                    erase_progress.enable_steady_tick(100);
-                    erase_progress.reset_elapsed();
-                }
-                StartedFilling => {
-                    if let Some(fp) = fill_progress.as_ref() {
-                        fp.enable_steady_tick(100)
-                    };
-                    if let Some(fp) = fill_progress.as_ref() {
-                        fp.reset_elapsed()
-                    };
-                }
-                PageProgrammed { size, .. } => {
-                    program_progress.inc(size as u64);
-                }
-                SectorErased { size, .. } => {
-                    erase_progress.inc(size as u64);
-                }
-                PageFilled { size, .. } => {
-                    if let Some(fp) = fill_progress.as_ref() {
-                        fp.inc(size as u64)
-                    };
-                }
-                FailedErasing => {
-                    erase_progress.abandon();
-                    program_progress.abandon();
-                }
-                FinishedErasing => {
-                    erase_progress.finish();
-                }
-                FailedProgramming => {
-                    program_progress.abandon();
-                }
-                FinishedProgramming => {
-                    program_progress.finish();
-                }
-                FailedFilling => {
-                    if let Some(fp) = fill_progress.as_ref() {
-                        fp.abandon()
-                    };
-                }
-                FinishedFilling => {
-                    if let Some(fp) = fill_progress.as_ref() {
-                        fp.finish()
-                    };
-                }
-            }
-        });
 
         // Make the multi progresses print.
         // indicatif requires this in a separate thread as this join is a blocking op,
@@ -144,9 +70,7 @@ pub fn run_flash_download(
             multi_progress.join().unwrap();
         });
 
-        download_option.progress = Some(&progress);
-
-        loader.commit(session, download_option, || false).map_err(|error| {
+        loader.commit(session, download_option, &mut |_| false).map_err(|error| {
             OperationError::FlashingFailed {
                 source: error,
                 target: session.target().clone(),
@@ -158,7 +82,7 @@ pub fn run_flash_download(
         // We don't care if we cannot join this thread.
         let _ = progress_thread_handle.join();
     } else {
-        loader.commit(session, download_option, || false).map_err(|error| {
+        loader.commit(session, download_option, &mut |_| false).map_err(|error| {
             OperationError::FlashingFailed {
                 source: error,
                 target: session.target().clone(),

@@ -163,15 +163,14 @@ pub fn test_flashing(
         eprint!(".");
     });
 
-    let mut options = DownloadOptions::default();
-    options.progress = Some(&progress);
+    let options = DownloadOptions::default();
 
     println_test_status!(tracker, blue, "Starting flashing test");
     println_test_status!(tracker, blue, "Binary: {}", test_binary.display());
 
     let start_time = Instant::now();
 
-    download_file_with_options(session, test_binary, Format::Elf, options, || false)?;
+    download_file_with_options(session, test_binary, Format::Elf, options, &mut |_| false)?;
 
     println!();
 

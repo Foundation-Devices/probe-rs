@@ -1,7 +1,7 @@
 use probe_rs_target::{MemoryRegion, RawFlashAlgorithm};
 
 use super::{
-    FlashAlgorithm, FlashBuilder, FlashError, FlashFill, FlashLayout, FlashPage, FlashProgress,
+    FlashAlgorithm, FlashBuilder, FlashError, FlashFill, FlashLayout, FlashPage,
 };
 use crate::config::NvmRegion;
 use crate::memory::MemoryInterface;
@@ -11,6 +11,7 @@ use crate::{
     Core, CoreRegisterAddress,
 };
 use std::{fmt::Debug, time::Duration};
+use crate::flashing::ProgressEvent;
 
 pub(super) trait Operation {
     fn operation() -> u32;
@@ -233,7 +234,7 @@ impl<'session> Flasher<'session> {
         restore_unwritten_bytes: bool,
         enable_double_buffering: bool,
         skip_erasing: bool,
-        progress: &FlashProgress,
+        feedback_fn: &mut impl FnMut(Option<ProgressEvent>) -> bool,
     ) -> Result<(), FlashError> {
         log::debug!("Starting program procedure.");
         // Convert the list of flash operations into flash sectors and pages.
@@ -243,7 +244,10 @@ impl<'session> Flasher<'session> {
             restore_unwritten_bytes,
         )?;
 
-        progress.initialized(flash_layout.clone());
+        if feedback_fn(Some(ProgressEvent::Initialized { flash_layout: flash_layout.clone() })) {
+            log::debug!("Stopped due to `feedback_fn` returned `true`");
+            return Ok(())
+        }
 
         log::debug!("Double Buffering enabled: {:?}", enable_double_buffering);
         log::debug!(
@@ -252,7 +256,10 @@ impl<'session> Flasher<'session> {
         );
 
         // Read all fill areas from the flash.
-        progress.started_filling();
+        if feedback_fn(Some(ProgressEvent::StartedFilling)) {
+            log::debug!("Stopped due to `feedback_fn` returned `true`");
+            return Ok(())
+        }
 
         if restore_unwritten_bytes {
             let fills = flash_layout.fills().to_vec();
@@ -263,28 +270,34 @@ impl<'session> Flasher<'session> {
 
                 // If we encounter an error, catch it, gracefully report the failure and return the error.
                 if result.is_err() {
-                    progress.failed_filling();
+                    feedback_fn(Some(ProgressEvent::FailedFilling));
                     return result;
                 } else {
-                    progress.page_filled(fill.size(), t.elapsed());
+                    if feedback_fn(Some(ProgressEvent::PageFilled { size: fill.size(), time: t.elapsed() })) {
+                        log::debug!("Stopped due to `feedback_fn` returned `true`");
+                        return Ok(())
+                    }
                 }
             }
         }
 
         // We successfully finished filling.
-        progress.finished_filling();
+        if feedback_fn(Some(ProgressEvent::FinishedFilling)) {
+            log::debug!("Stopped due to `feedback_fn` returned `true`");
+            return Ok(())
+        }
 
         // Skip erase if necessary
         if !skip_erasing {
             // Erase all necessary sectors
-            self.sector_erase(&flash_layout, progress)?;
+            self.sector_erase(&flash_layout, feedback_fn)?;
         }
 
         // Flash all necessary pages.
         if self.double_buffering_supported() && enable_double_buffering {
-            self.program_double_buffer(&flash_layout, progress)?;
+            self.program_double_buffer(&flash_layout, feedback_fn)?;
         } else {
-            self.program_simple(&flash_layout, progress)?;
+            self.program_simple(&flash_layout, feedback_fn)?;
         };
 
         Ok(())
@@ -314,9 +327,12 @@ impl<'session> Flasher<'session> {
     fn program_simple(
         &mut self,
         flash_layout: &FlashLayout,
-        progress: &FlashProgress,
+        feedback_fn: &mut impl FnMut(Option<ProgressEvent>) -> bool,
     ) -> Result<(), FlashError> {
-        progress.started_programming();
+        if feedback_fn(Some(ProgressEvent::StartedProgramming)) {
+            log::debug!("Stopped due to `feedback_fn` returned `true`");
+            return Ok(())
+        }
 
         let mut t = std::time::Instant::now();
         let result = self.run_program(|active| {
@@ -327,16 +343,27 @@ impl<'session> Flasher<'session> {
                         page_address: page.address(),
                         source: Box::new(error),
                     })?;
-                progress.page_programmed(page.size(), t.elapsed());
+
+                if feedback_fn(Some(ProgressEvent::PageProgrammed { size: page.size(), time: t.elapsed() })) {
+                    log::debug!("Stopped due to `feedback_fn` returned `true`");
+                    return Ok(())
+                }
+
                 t = std::time::Instant::now();
             }
             Ok(())
         });
 
         if result.is_ok() {
-            progress.finished_programming();
+            if feedback_fn(Some(ProgressEvent::FinishedProgramming)) {
+                log::debug!("Stopped due to `feedback_fn` returned `true`");
+                return result;
+            }
         } else {
-            progress.failed_programming();
+            if feedback_fn(Some(ProgressEvent::FailedProgramming)) {
+                log::debug!("Stopped due to `feedback_fn` returned `true`");
+                return result;
+            }
         }
 
         result
@@ -346,9 +373,12 @@ impl<'session> Flasher<'session> {
     fn sector_erase(
         &mut self,
         flash_layout: &FlashLayout,
-        progress: &FlashProgress,
+        feedback_fn: &mut impl FnMut(Option<ProgressEvent>) -> bool,
     ) -> Result<(), FlashError> {
-        progress.started_erasing();
+        if feedback_fn(Some(ProgressEvent::StartedErasing)) {
+            log::debug!("Stopped due to `feedback_fn` returned `true`");
+            return Ok(())
+        }
 
         let mut t = std::time::Instant::now();
         let result = self.run_erase(|active| {
@@ -360,16 +390,26 @@ impl<'session> Flasher<'session> {
                         source: Box::new(e),
                     })?;
 
-                progress.sector_erased(sector.size(), t.elapsed());
+                if feedback_fn(Some(ProgressEvent::SectorErased { size: sector.size(), time: t.elapsed()})) {
+                    log::debug!("Stopped due to `feedback_fn` returned `true`");
+                    return Ok(())
+                }
+
                 t = std::time::Instant::now();
             }
             Ok(())
         });
 
         if result.is_ok() {
-            progress.finished_erasing();
+            if feedback_fn(Some(ProgressEvent::FinishedErasing)) {
+                log::debug!("Stopped due to `feedback_fn` returned `true`");
+                return result;
+            }
         } else {
-            progress.failed_erasing();
+            if feedback_fn(Some(ProgressEvent::FailedErasing)) {
+                log::debug!("Stopped due to `feedback_fn` returned `true`");
+                return result;
+            }
         }
 
         result
@@ -387,11 +427,14 @@ impl<'session> Flasher<'session> {
     fn program_double_buffer(
         &mut self,
         flash_layout: &FlashLayout,
-        progress: &FlashProgress,
+        feedback_fn: &mut impl FnMut(Option<ProgressEvent>) -> bool,
     ) -> Result<(), FlashError> {
         let mut current_buf = 0;
 
-        progress.started_programming();
+        if feedback_fn(Some(ProgressEvent::StartedProgramming)) {
+            log::debug!("Stopped due to `feedback_fn` returned `true`");
+            return Ok(())
+        }
 
         let mut t = std::time::Instant::now();
         let result = self.run_program(|active| {
@@ -411,7 +454,12 @@ impl<'session> Flasher<'session> {
                         })?;
 
                 last_page_address = page.address();
-                progress.page_programmed(page.size(), t.elapsed());
+
+                if feedback_fn(Some(ProgressEvent::PageProgrammed { size: page.size(), time: t.elapsed() })) {
+                    log::debug!("Stopped due to `feedback_fn` returned `true`");
+                    return Ok(0)
+                }
+
                 t = std::time::Instant::now();
                 if result != 0 {
                     return Err(FlashError::RoutineCallFailed {
@@ -444,15 +492,20 @@ impl<'session> Flasher<'session> {
                     error_code: result,
                 })
             } else {
-                Ok(0)
+                return Ok(0)
             }
         });
 
         if result.is_ok() {
-            progress.finished_programming();
+            if feedback_fn(Some(ProgressEvent::FinishedProgramming)) {
+                log::debug!("Stopped due to `feedback_fn` returned `true`");
+                return Ok(());
+            }
         } else {
-            progress.failed_programming();
-            result?;
+            if feedback_fn(Some(ProgressEvent::FailedProgramming)) {
+                log::debug!("Stopped due to `feedback_fn` returned `true`");
+                return result.map(|_| ());
+            }
         }
 
         Ok(())
